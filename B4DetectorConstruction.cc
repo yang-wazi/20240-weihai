@@ -24,10 +24,10 @@
 // ********************************************************************
 //
 // 
-/// \file B4DetectorConstruction.cc
-/// \brief Implementation of the B4DetectorConstruction class
+/// \file DetectorConstruction.cc
+/// \brief Implementation of the DetectorConstruction class
 
-#include "B4DetectorConstruction.hh"
+#include "DetectorConstruction.hh"
 
 #include "G4Material.hh"
 #include "G4NistManager.hh"
@@ -50,14 +50,16 @@
 #include "G4PhysicalConstants.hh"
 #include "G4SystemOfUnits.hh"
 
+namespace B4
+{
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 G4ThreadLocal 
-G4GlobalMagFieldMessenger* B4DetectorConstruction::fMagFieldMessenger = nullptr; 
+G4GlobalMagFieldMessenger* DetectorConstruction::fMagFieldMessenger = nullptr; 
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-B4DetectorConstruction::B4DetectorConstruction()
+DetectorConstruction::DetectorConstruction()
  : G4VUserDetectorConstruction(),
    fAbsorberPV(nullptr),
    fGapPV(nullptr),
@@ -67,13 +69,13 @@ B4DetectorConstruction::B4DetectorConstruction()
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-B4DetectorConstruction::~B4DetectorConstruction()
+DetectorConstruction::~DetectorConstruction()
 { 
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-G4VPhysicalVolume* B4DetectorConstruction::Construct()
+G4VPhysicalVolume* DetectorConstruction::Construct()
 {
   // Define materials 
   DefineMaterials();
@@ -84,20 +86,23 @@ G4VPhysicalVolume* B4DetectorConstruction::Construct()
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-void B4DetectorConstruction::DefineMaterials()
+void DetectorConstruction::DefineMaterials()
 { 
   // Lead material defined using NIST Manager
   auto nistManager = G4NistManager::Instance();
   nistManager->FindOrBuildMaterial("G4_Pb");
-  G4Element* Al = nistManager->FindOrBuildMaterial("G4_Al");
-  G4Element* Ga = nistManager->FindOrBuildMaterial("G4_Ga");
-  G4Element* Gd = nistManager->FindOrBuildMaterial("G4_Gd");
-  G4Element* O = nistManager->FindOrBuildMaterial("G4_O");
+  nistManager->FindOrBuildMaterial("G4_Al");
+  G4Element* Al = nistManager->FindOrBuildElement("Al");
+  G4Element* Ga = nistManager->FindOrBuildElement("Ga");
+  G4Element* Gd = nistManager->FindOrBuildElement("Gd");
+  G4Element* O = nistManager->FindOrBuildElement("O");
   nistManager->FindOrBuildMaterial("G4_W");  
   // // Liquid argon material
-  // G4double a;  // mass of a mole;
-  // G4double z;  // z=mean number of protons;  
-  // G4double density; 
+  G4double a;  // mass of a mole;
+  G4double z;  // z=mean number of protons;  
+  G4double density; 
+  G4String name;
+  G4int ncomponents;
   // new G4Material("liquidArgon", z=18., a= 39.95*g/mole, density= 1.390*g/cm3);
   //        // The argon by NIST Manager is a gas with a different density
 
@@ -119,7 +124,7 @@ void B4DetectorConstruction::DefineMaterials()
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-G4VPhysicalVolume* B4DetectorConstruction::DefineVolumes()
+G4VPhysicalVolume* DetectorConstruction::DefineVolumes()
 {
   // Geometry parameters
   G4int nofLayers = 10;
@@ -151,7 +156,7 @@ G4VPhysicalVolume* B4DetectorConstruction::DefineVolumes()
   if ( ! defaultMaterial || ! absorberMaterial || ! mirrorMaterial || ! fiberMaterial) {
     G4ExceptionDescription msg;
     msg << "Cannot retrieve materials already defined."; 
-    G4Exception("B4DetectorConstruction::DefineVolumes()",
+    G4Exception("DetectorConstruction::DefineVolumes()",
       "MyCode0001", FatalException, msg);
   }  
   
@@ -372,7 +377,7 @@ G4VPhysicalVolume* B4DetectorConstruction::DefineVolumes()
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-void B4DetectorConstruction::ConstructSDandField()
+void DetectorConstruction::ConstructSDandField()
 { 
   // Create global magnetic field messenger.
   // Uniform magnetic field is then created automatically if
@@ -386,3 +391,4 @@ void B4DetectorConstruction::ConstructSDandField()
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+}
