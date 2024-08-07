@@ -89,22 +89,30 @@ void B4DetectorConstruction::DefineMaterials()
   // Lead material defined using NIST Manager
   auto nistManager = G4NistManager::Instance();
   nistManager->FindOrBuildMaterial("G4_Pb");
-  nistManager->FindOrBuildMaterial("G4_Al");
-  nistManager->FindOrBuildMaterial("G4_Ga");
-  nistManager->FindOrBuildMaterial("G4_Gd");
-  nistManager->FindOrBuildMaterial("G4_O");
+  G4Element* Al = nistManager->FindOrBuildMaterial("G4_Al");
+  G4Element* Ga = nistManager->FindOrBuildMaterial("G4_Ga");
+  G4Element* Gd = nistManager->FindOrBuildMaterial("G4_Gd");
+  G4Element* O = nistManager->FindOrBuildMaterial("G4_O");
   nistManager->FindOrBuildMaterial("G4_W");  
-  // Liquid argon material
-  G4double a;  // mass of a mole;
-  G4double z;  // z=mean number of protons;  
-  G4double density; 
-  new G4Material("liquidArgon", z=18., a= 39.95*g/mole, density= 1.390*g/cm3);
-         // The argon by NIST Manager is a gas with a different density
+  // // Liquid argon material
+  // G4double a;  // mass of a mole;
+  // G4double z;  // z=mean number of protons;  
+  // G4double density; 
+  // new G4Material("liquidArgon", z=18., a= 39.95*g/mole, density= 1.390*g/cm3);
+  //        // The argon by NIST Manager is a gas with a different density
 
   // Vacuum
   new G4Material("Galactic", z=1., a=1.01*g/mole,density= universe_mean_density,
                   kStateGas, 2.73*kelvin, 3.e-18*pascal);
-
+  
+  // GAGG
+  G4Material* matGAGG = new G4Material(name = "GAGG",
+                                      density = 6.63 * g / cm3,
+                                      ncomponents = 4);
+  matGAGG->AddElement(Ga, 3);
+  matGAGG->AddElement(Gd, 3);
+  matGAGG->AddElement(Al, 2);
+  matGAGG->AddElement(O, 12);
   // Print materials
   G4cout << *(G4Material::GetMaterialTable()) << G4endl;
 }
