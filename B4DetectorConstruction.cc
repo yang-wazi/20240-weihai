@@ -36,359 +36,187 @@
 #include "G4LogicalVolume.hh"
 #include "G4PVPlacement.hh"
 #include "G4PVReplica.hh"
+#include "G4PVDivision.hh"
+#include "G4ReplicatedSlice.hh"
 #include "G4GlobalMagFieldMessenger.hh"
 #include "G4AutoDelete.hh"
 
-#include "G4GeometryManager.hh"
-#include "G4PhysicalVolumeStore.hh"
-#include "G4LogicalVolumeStore.hh"
-#include "G4SolidStore.hh"
-
 #include "G4VisAttributes.hh"
 #include "G4Colour.hh"
-
 #include "G4PhysicalConstants.hh"
 #include "G4SystemOfUnits.hh"
 
 namespace B4
 {
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-G4ThreadLocal 
-G4GlobalMagFieldMessenger* DetectorConstruction::fMagFieldMessenger = nullptr; 
-
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
-
-DetectorConstruction::DetectorConstruction()
- : G4VUserDetectorConstruction(),
-   fAbsorberPV(nullptr),
-   fGapPV(nullptr),
-   fCheckOverlaps(true)
-{
-}
+G4ThreadLocal
+G4GlobalMagFieldMessenger* DetectorConstruction::fMagFieldMessenger = nullptr;
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-DetectorConstruction::~DetectorConstruction()
-{ 
-}
-
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
-
-G4VPhysicalVolume* DetectorConstruction::Construct()
-{
-  // Define materials 
+G4VPhysicalVolume* DetectorConstruction::Construct() {
+  // Define materials
   DefineMaterials();
-  
+
   // Define volumes
   return DefineVolumes();
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-void DetectorConstruction::DefineMaterials()
-{ 
-  // Lead material defined using NIST Manager
+void DetectorConstruction::DefineMaterials() {
   auto nistManager = G4NistManager::Instance();
-  nistManager->FindOrBuildMaterial("G4_Pb");
+  nistManager->FindOrBuildMaterial("G4_AIR");
   nistManager->FindOrBuildMaterial("G4_Al");
-  G4Element* Al = nistManager->FindOrBuildElement("Al");
-  G4Element* Ga = nistManager->FindOrBuildElement("Ga");
-  G4Element* Gd = nistManager->FindOrBuildElement("Gd");
-  G4Element* O = nistManager->FindOrBuildElement("O");
-  nistManager->FindOrBuildMaterial("G4_W");  
-  // // Liquid argon material
-  G4double a;  // mass of a mole;
-  G4double z;  // z=mean number of protons;  
-  G4double density; 
-  G4String name;
-  G4int ncomponents;
-  // new G4Material("liquidArgon", z=18., a= 39.95*g/mole, density= 1.390*g/cm3);
-  //        // The argon by NIST Manager is a gas with a different density
+  nistManager->FindOrBuildMaterial("G4_W");
+  nistManager->FindOrBuildMaterial("G4_Galactic");
 
-  // Vacuum
-  new G4Material("Galactic", z=1., a=1.01*g/mole,density= universe_mean_density,
-                  kStateGas, 2.73*kelvin, 3.e-18*pascal);
-  
-  // GAGG
-  G4Material* matGAGG = new G4Material(name = "GAGG",
-                                      density = 6.63 * g / cm3,
-                                      ncomponents = 4);
-  matGAGG->AddElement(Ga, 3);
-  matGAGG->AddElement(Gd, 3);
-  matGAGG->AddElement(Al, 2);
-  matGAGG->AddElement(O, 12);
+  G4Material* GAGG = new G4Material("GAGG", 6.63*g/cm3, 4);
+  GAGG->AddElement(nistManager->FindOrBuildElement("Gd"), 3);
+  GAGG->AddElement(nistManager->FindOrBuildElement("Al"), 2);
+  GAGG->AddElement(nistManager->FindOrBuildElement("Ga"), 3);
+  GAGG->AddElement(nistManager->FindOrBuildElement("O"), 12);
   // Print materials
   G4cout << *(G4Material::GetMaterialTable()) << G4endl;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-G4VPhysicalVolume* DetectorConstruction::DefineVolumes()
-{
+G4VPhysicalVolume* DetectorConstruction::DefineVolumes() {
   // Geometry parameters
-  G4int nofLayers = 10;
-  G4double absoThickness = 10.*mm;
-  G4double gapThickness =  5.*mm;
-  //G4double calorSizeXY  = 10.*cm;
-  G4int nofStrips = 40;
-  G4int nofCells = 40;
+  G4double moduleXY = 1.5 * cm;
+  G4double holeXY = 1.67 * mm;    // Hole: Volumn occupied by a fiber [ (1.67mm)^2 ]
+  G4double fiberXY = 1.0 * mm;
+  G4double fiber1Z = 4.5 * cm;
+  G4double fiber2Z = 10.5 * cm;
+  G4double AlThickness = 1.0 * mm; // Modified thickness for clarification
+  G4int nofModules = 40;
   G4int nofFibers = 9;
-  G4double spaThickness1 = 10.5*cm;
-  G4double spaThickness2 = 4.5*cm ;
-  G4double mirrorThickness = 1*mm ;
 
-  G4double fiberSizeXY = 1*mm;
-  G4double fiberGap = 0.67*mm;
-  G4double cellMargin = 0.32*mm;
-  G4double cellSizeXY = 1.5*cm;
+  auto moduleZ = fiber1Z + AlThickness + fiber2Z;
+  auto moduleBound = moduleXY - holeXY * nofFibers;
+  auto fiberGap = holeXY - fiberXY;
+  auto calorXY = nofModules * moduleXY;
+  auto calorZ = moduleZ;
+  auto worldSizeXY = 1.2 * calorXY;
+  auto worldSizeZ  = 3 * m;   //for Particle Gun in the world (2*m)
 
-  auto calorThickness = spaThickness1 + mirrorThickness + spaThickness2;
-  auto calorSizeXY = nofCells * cellSizeXY;
-  auto worldSizeXY = 1.2 * calorSizeXY;
-  auto worldSizeZ  = 1.2 * calorThickness;
   // Get materials
-  auto defaultMaterial = G4Material::GetMaterial("Galactic");
-  auto absorberMaterial = G4Material::GetMaterial("G4_W");
-  auto mirrorMaterial = G4Material::GetMaterial("G4_Al");
-  auto fiberMaterial = G4Material::GetMaterial("G4_Pb");
-
-  if ( ! defaultMaterial || ! absorberMaterial || ! mirrorMaterial || ! fiberMaterial) {
+  auto air = G4Material::GetMaterial("G4_AIR");
+  auto GAGG = G4Material::GetMaterial("GAGG");
+  auto Al = G4Material::GetMaterial("G4_Al");
+  auto W = G4Material::GetMaterial("G4_W");
+  auto vac = G4Material::GetMaterial("G4_Galactic");
+  if ( ! air || ! GAGG || ! Al || ! W || ! vac) {
     G4ExceptionDescription msg;
     msg << "Cannot retrieve materials already defined."; 
     G4Exception("DetectorConstruction::DefineVolumes()",
       "MyCode0001", FatalException, msg);
   }  
-  
-  // colour
-  G4VisAttributes* Yellow = new G4VisAttributes(G4Colour(1.,1.,0.,1.0));
-  G4VisAttributes* Blue = new G4VisAttributes(G4Colour(0.,0.,1.,0.3)); 
-  G4VisAttributes* Red = new G4VisAttributes(G4Colour(1.,0.,0.,1.0));
-  G4VisAttributes* Gray = new G4VisAttributes(G4Colour(0.5,0.5,0.5,1.0));
-  Yellow->SetForceSolid(true); 
-  Blue->SetForceSolid(true);
-  Red->SetForceSolid(true);
-  Gray->SetForceSolid(true);
+
   //     
   // World
   //
-  auto worldS 
-    = new G4Box("World",           // its name
-                 worldSizeXY/2, worldSizeXY/2, worldSizeZ/2); // its size
-                         
-  auto worldLV
-    = new G4LogicalVolume(
-                 worldS,           // its solid
-                 defaultMaterial,  // its material
-                 "World");         // its name
-                                   
-  auto worldPV
-    = new G4PVPlacement(
-                 0,                // no rotation
-                 G4ThreeVector(),  // at (0,0,0)
-                 worldLV,          // its logical volume                         
-                 "World",          // its name
-                 0,                // its mother  volume
-                 false,            // no boolean operation
-                 0,                // copy number
-                 fCheckOverlaps);  // checking overlaps 
-  
+  auto solidWorld = new G4Box("World", worldSizeXY / 2, worldSizeXY / 2, worldSizeZ / 2);
+  auto logicWorld = new G4LogicalVolume(solidWorld, vac, "World");
+  auto physWorld = new G4PVPlacement(nullptr, G4ThreeVector(), logicWorld, "World", nullptr, false, 0, true);
+
   //                               
   // Calorimeter
   //  
-  auto calorimeterS
-    = new G4Box("Calorimeter",     // its name
-                 calorSizeXY/2, calorSizeXY/2, calorThickness/2); // its size
-                         
-  auto calorLV
-    = new G4LogicalVolume(
-                 calorimeterS,     // its solid
-                 defaultMaterial,  // its material
-                 "Calorimeter");   // its name
-                                   
-  new G4PVPlacement(
-                 0,                // no rotation
-                 G4ThreeVector(),  // at (0,0,0)
-                 calorLV,          // its logical volume                         
-                 "Calorimeter",    // its name
-                 worldLV,          // its mother  volume
-                 false,            // no boolean operation
-                 0,                // copy number
-                 fCheckOverlaps);  // checking overlaps 
-  
-  //                                 
-  // spaOne
-  //
-   auto spaOneS = new G4Box("SpaOne", calorSizeXY/2, calorSizeXY/2, spaThickness1/2);
-  auto spaOneLV = new G4LogicalVolume(
-                spaOneS,
-                absorberMaterial,
-                "SpaOne");
-  new G4PVPlacement(nullptr,
-    G4ThreeVector(0, 0, -0.5*(calorThickness - spaThickness1)),
-    spaOneLV,
-    "SpaOne",
-    calorLV,
-    false,
-    0,
-    fCheckOverlaps);
-  spaOneLV->SetVisAttributes(Blue);
+  auto solidCalor = new G4Box("Calorimeter", calorXY / 2, calorXY / 2, calorZ / 2);
+  auto logicCalor = new G4LogicalVolume(solidCalor, vac, "Calorimeter");
+  auto physCalor = new G4PVPlacement(nullptr, G4ThreeVector(0,0,-1*m), logicCalor, "Calorimeter", logicWorld, false, 0, true);
+
   //                               
-  // mirror
-  //
-  auto mirrorS = new G4Box("Mirror", calorSizeXY/2, calorSizeXY/2, mirrorThickness/2);
-  auto mirrorLV = new G4LogicalVolume(
-                mirrorS,
-                mirrorMaterial,
-                "Mirror");
-  new G4PVPlacement(nullptr,
-    G4ThreeVector(0, 0, 0.5*calorThickness - spaThickness2 - 0.5*mirrorThickness),
-    mirrorLV,
-    "Mirror",
-    calorLV,
-    false,
-    0,
-    fCheckOverlaps);
-  mirrorLV->SetVisAttributes(Red);
+  // Module Strip
+  //  
+  auto solidModuleStrip = new G4Box("ModuleStrip", calorXY / 2, moduleXY / 2, calorZ / 2);
+  auto logicModuleStrip = new G4LogicalVolume(solidModuleStrip, W, "ModuleStrip");
+  new G4PVReplica("ModuleStrip", logicModuleStrip, logicCalor, kYAxis, nofModules, moduleXY);
+
   //                               
-  // sapTwo
-  //
-  auto spaTwoS = new G4Box("SpaTwo", calorSizeXY/2, calorSizeXY/2, spaThickness2/2);
-  auto spaTwoLV = new G4LogicalVolume(
-                spaTwoS,
-                absorberMaterial,
-                "SpaTwo");
-  new G4PVPlacement(nullptr,
-    G4ThreeVector(0, 0, 0.5*(calorThickness - spaThickness2)),
-    spaTwoLV,
-    "SpaTwo",
-    calorLV,
-    false,
-    0,
-    fCheckOverlaps);
-  spaTwoLV->SetVisAttributes(Blue);
+  // Modules
+  //  
+  auto solidModule = new G4Box("ModuleStrip", moduleXY / 2, moduleXY / 2, calorZ / 2);
+  auto logicModule = new G4LogicalVolume(solidModule, W, "Module");
+  new G4PVReplica("Module", logicModule, logicModuleStrip, kXAxis, nofModules, moduleXY);
 
-  G4LogicalVolume** fLogicCellSpaOne = new G4LogicalVolume*[nofCells*nofCells];
-  G4LogicalVolume** fLogicCellSpaTwo = new G4LogicalVolume*[nofCells*nofCells];
-  auto cellSpaOneS = new G4Box("CellOne", cellSizeXY/2, cellSizeXY/2, spaThickness1/2);
-  auto cellSpaTwoS = new G4Box("CellTwo", cellSizeXY/2, cellSizeXY/2, spaThickness2/2);
-  auto fiberSpaOneS= new G4Box("FiberOne",fiberSizeXY/2,fiberSizeXY/2,spaThickness1/2);
-  auto fiberSpaTwoS= new G4Box("FiberTwo",fiberSizeXY/2,fiberSizeXY/2,spaThickness2/2);
-  auto fiberSpaOneLV = new G4LogicalVolume(fiberSpaOneS, fiberMaterial, "FiberOneLV", nullptr,nullptr,nullptr);
-  auto fiberSpaTwoLV = new G4LogicalVolume(fiberSpaTwoS, fiberMaterial, "FiberTwoLV", nullptr,nullptr,nullptr);
-  fiberSpaOneLV->SetVisAttributes(Yellow);
-  fiberSpaTwoLV->SetVisAttributes(Yellow);
+  //                               
+  // Three parts of module
+  //  
+  auto solidSpa1 = new G4Box("Spa1", moduleXY / 2, moduleXY / 2, fiber1Z / 2);
+  auto logicSpa1 = new G4LogicalVolume(solidSpa1, W, "Spa1");
+  G4double fiber1PosZ = -moduleZ / 2 + fiber1Z / 2;
+  new G4PVPlacement(nullptr, G4ThreeVector(0, 0, fiber1PosZ), logicSpa1, "Spa1", logicModule, false, 0, true);
 
-  for (G4int cellNi=0; cellNi<nofCells; cellNi++){
-    for (G4int cellNj=0; cellNj<nofCells; cellNj++){
-      G4double cellposX = (cellNi+0.5)*cellSizeXY-0.5*calorSizeXY;
-      G4double cellposY = (cellNj+0.5)*cellSizeXY-0.5*calorSizeXY;
-      G4double cellposZ =  -0.5*(calorThickness - spaThickness1); 
-      G4int index = cellNi + cellNj * nofCells ;
-      fLogicCellSpaOne[index] =
-        new G4LogicalVolume(cellSpaOneS, absorberMaterial, "CellOneLV",nullptr,nullptr,nullptr);
-      fLogicCellSpaOne[index]->SetVisAttributes(Blue);
-      new G4PVPlacement(nullptr,
-        G4ThreeVector(cellposX,cellposY,0),
-        fLogicCellSpaOne[index], //fLogicCellSpaOne[cellNi][cellNj],
-        "CEllOneLV",
-        spaOneLV,
-        index,
-        fCheckOverlaps);
-      fLogicCellSpaTwo[index] =
-        new G4LogicalVolume(cellSpaTwoS, absorberMaterial, "CellTwoLV",nullptr,nullptr,nullptr);
-      fLogicCellSpaTwo[index]->SetVisAttributes(Blue);
-      new G4PVPlacement(nullptr,
-        G4ThreeVector(cellposX,cellposY,0),
-        fLogicCellSpaTwo[index], //fLogicCellSpaTwo[cellNi][cellNj],
-        "CEllTwoLV",
-        spaTwoLV,
-        index,//cellNi + nofCells * cellNj,
-        fCheckOverlaps);
+  auto solidMirror = new G4Box("Mirror", moduleXY / 2, moduleXY / 2, AlThickness / 2);
+  auto logicMirror = new G4LogicalVolume(solidMirror, Al, "Mirror");
+  G4double mirrorPosZ = fiber1PosZ + fiber1Z / 2 + AlThickness / 2;
+  new G4PVPlacement(nullptr, G4ThreeVector(0, 0, mirrorPosZ), logicMirror, "Mirror", logicModule, false, 0, true);
 
-  }}
-//
-   for (G4int cellNi=0; cellNi<nofCells; cellNi++){
-   for (G4int cellNj=0; cellNj<nofCells; cellNj++){
-        G4int index = cellNi + nofCells * cellNj;
-        for (G4int fiberNi=0; fiberNi<nofFibers; fiberNi++){
-        for (G4int fiberNj=0; fiberNj<nofFibers; fiberNj++){
-          G4double fiberposX = cellMargin+0.5*fiberSizeXY+fiberNi*(fiberGap+fiberSizeXY)-0.5*cellSizeXY;
-          G4double fiberposY = cellMargin+0.5*fiberSizeXY+fiberNj*(fiberGap+fiberSizeXY)-0.5*cellSizeXY;
-          G4double fiberposZ = 0.5*(calorThickness - spaThickness2);
-          // In SpaOne
-          //auto fiberSpaOneLV = new G4LogicalVolume(fiberSpaOneS, absorberMaterial, "FiberOneLV", nullptr,nullptr,nullptr);
-          new G4PVPlacement(nullptr,
-            G4ThreeVector(fiberposX,fiberposY,0),
-            fiberSpaOneLV,
-            "FiberOneLV",
-            fLogicCellSpaOne[index], //fLogicCellSpaOne[cellNi][cellNj],
-            //fLogicCellSpaOne[820],
-            0,
-            fCheckOverlaps);
-        }}
-    }}
-   for (G4int cellNi=0; cellNi<nofCells; cellNi++){
-   for (G4int cellNj=0; cellNj<nofCells; cellNj++){
-        G4int index = cellNi + nofCells * cellNj;
-        for (G4int fiberNi=0; fiberNi<nofFibers; fiberNi++){
-        for (G4int fiberNj=0; fiberNj<nofFibers; fiberNj++){
-          G4double fiberposX = cellMargin+0.5*fiberSizeXY+fiberNi*(fiberGap+fiberSizeXY)-0.5*cellSizeXY;
-          G4double fiberposY = cellMargin+0.5*fiberSizeXY+fiberNj*(fiberGap+fiberSizeXY)-0.5*cellSizeXY;
-          G4double fiberposZ = 0.5*(calorThickness - spaThickness2);
-          // In SpaTwo
-          //auto fiberSpaTwoLV = new G4LogicalVolume(fiberSpaTwoS, absorberMaterial, "FiberTwoLV", nullptr,nullptr,nullptr);
-          new G4PVPlacement(nullptr,
-            G4ThreeVector(fiberposX,fiberposY,0),
-            fiberSpaTwoLV,
-            "FiberTwoLV",
-            fLogicCellSpaTwo[index], //fLogicCellSpaTwo[cellNi][cellNj],
-            //fLogicCellSpaTwo[0][39],
-            0,
-            fCheckOverlaps);
-        }}// end of fiberNj, fiberNi
-    }}
+  auto solidSpa2 = new G4Box("Spa2", moduleXY / 2, moduleXY / 2, fiber2Z / 2);
+  auto logicSpa2 = new G4LogicalVolume(solidSpa2, W, "Spa2");
+  G4double fiber2PosZ = moduleZ / 2 - fiber2Z / 2;
+  new G4PVPlacement(nullptr, G4ThreeVector(0, 0, fiber2PosZ), logicSpa2, "Spa2", logicModule, false, 0, true);
+
   //
-  // print parameters
+  // Hole Strip
   //
-  G4cout
-    << G4endl 
-    << "------------------------------------------------------------" << G4endl
-    << "---> The calorimeter is " << nofLayers << " layers of: [ "
-    << absoThickness/mm << "mm of " << absorberMaterial->GetName() 
-    << " + "
-    << calorThickness/mm << "mm of " << absorberMaterial->GetName() << " ] " << G4endl
-    << "------------------------------------------------------------" << G4endl;
-  
-  //                                        
+  auto solidHoleStrip1 = new G4Box("HoleStrip1", holeXY * nofFibers / 2, holeXY / 2, fiber1Z / 2);
+  auto logicHoleStrip1 = new G4LogicalVolume(solidHoleStrip1, W, "HoleStrip1");
+  new G4PVDivision("HoleStrip1", logicHoleStrip1, logicSpa1, kYAxis, nofFibers, holeXY, moduleBound);
+
+  auto solidHoleStrip2 = new G4Box("HoleStrip2", holeXY * nofFibers / 2, holeXY / 2, fiber2Z / 2);
+  auto logicHoleStrip2 = new G4LogicalVolume(solidHoleStrip2, W, "HoleStrip2");
+  new G4PVDivision("HoleStrip2", logicHoleStrip2, logicSpa2, kYAxis, nofFibers, holeXY, moduleBound);
+
+  //
+  // Hole
+  //
+  auto solidHole1 = new G4Box("Hole1", holeXY / 2, holeXY / 2, fiber1Z / 2);
+  auto logicHole1 = new G4LogicalVolume(solidHole1, W, "Hole1");
+  new G4PVReplica("Hole1", logicHole1, logicHoleStrip1, kXAxis, nofFibers, holeXY);
+
+  auto solidHole2 = new G4Box("Hole2", holeXY / 2, holeXY / 2, fiber2Z / 2);
+  auto logicHole2 = new G4LogicalVolume(solidHole2, W, "Hole2");
+  new G4PVReplica("Hole1", logicHole2, logicHoleStrip2, kXAxis, nofFibers, holeXY);
+
+  // Fibers
+  auto solidFiber1 = new G4Box("Fiber1", fiberXY / 2, fiberXY / 2, fiber1Z / 2);
+  auto logicFiber1 = new G4LogicalVolume(solidFiber1, GAGG, "Fiber1");
+  new G4PVPlacement(nullptr, G4ThreeVector(), logicFiber1, "Fiber1", logicHole1, false, 0, true);
+
+  auto solidFiber2 = new G4Box("Fiber2", fiberXY / 2, fiberXY / 2, fiber2Z / 2);
+  auto logicFiber2 = new G4LogicalVolume(solidFiber2, GAGG, "Fiber2");
+  new G4PVPlacement(nullptr, G4ThreeVector(), logicFiber2, "Fiber2", logicHole2, false, 0, true);
+
   // Visualization attributes
-  //
-  worldLV->SetVisAttributes (G4VisAttributes::GetInvisible());
+  logicWorld->SetVisAttributes(G4VisAttributes::GetInvisible());
 
-  auto simpleBoxVisAtt= new G4VisAttributes(G4Colour(1.0,1.0,1.0));
-  simpleBoxVisAtt->SetVisibility(true);
-  calorLV->SetVisAttributes(simpleBoxVisAtt);
+  auto moduleVisAtt = new G4VisAttributes(G4Colour(1.0, 0.0, 0.0)); // Red for modules
+  moduleVisAtt->SetVisibility(true);
+  logicModule->SetVisAttributes(moduleVisAtt);
 
-  //
-  // Always return the physical World
-  //
-  return worldPV;
+  auto fiberVisAtt = new G4VisAttributes(G4Colour(0.0, 1.0, 0.0)); // Green for fibers
+  fiberVisAtt->SetVisibility(true);
+  logicFiber1->SetVisAttributes(fiberVisAtt);
+  logicFiber2->SetVisAttributes(fiberVisAtt);
+
+  auto mirrorVisAtt = new G4VisAttributes(G4Colour(0.0, 0.0, 1.0)); // Blue for Mirror
+  mirrorVisAtt->SetVisibility(true);
+  logicMirror->SetVisAttributes(mirrorVisAtt);
+
+  return physWorld;
 }
 
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
-
-void DetectorConstruction::ConstructSDandField()
-{ 
-  // Create global magnetic field messenger.
-  // Uniform magnetic field is then created automatically if
-  // the field value is not zero.
-  G4ThreeVector fieldValue;
+void DetectorConstruction::ConstructSDandField() {
+  G4ThreeVector fieldValue = G4ThreeVector();
   fMagFieldMessenger = new G4GlobalMagFieldMessenger(fieldValue);
   fMagFieldMessenger->SetVerboseLevel(1);
-  
-  // Register the field messenger for deleting
+
   G4AutoDelete::Register(fMagFieldMessenger);
 }
 
-//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
-}
+}  // namespace B4
+
